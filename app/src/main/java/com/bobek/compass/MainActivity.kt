@@ -18,7 +18,6 @@
 
 package com.bobek.compass
 
-import android.content.Context
 import android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LOCKED
 import android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
 import android.hardware.Sensor
@@ -26,11 +25,7 @@ import android.hardware.SensorEvent
 import android.hardware.SensorEventListener
 import android.hardware.SensorManager
 import android.hardware.SensorManager.*
-import android.os.Build
-import android.os.Bundle
-import android.os.VibrationEffect
-import android.os.Vibrator
-import android.os.VibratorManager
+import android.os.*
 import android.text.method.LinkMovementMethod
 import android.util.Log
 import android.view.*
@@ -71,6 +66,11 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private var azimuthCalibration : Float = 0f
     //private float storing the current azimuth value
     private var currentAzimuth : Float = 0f
+
+    //boolean to check if the phone is currently vibrating
+    private var isVibrating : Boolean = false
+
+
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
@@ -285,10 +285,20 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         //if calibrated azimuth is not null, calculate the difference between the two
         if (azimuthCalibration != null) {
             val azimuthDifference = getAzimuthDifference()
-            Log.d("Difference", "Azimuth difference is $azimuthDifference")
-            //if azimuth difference is greater than 35 degrees, vibrate the phone
-            if (azimuthDifference > 35) {
+            //Log.d("Difference", "Azimuth difference is $azimuthDifference")
+            //if azimuth difference is greater than or equal to 35 degrees, vibrate the phone
+            if (azimuthDifference >= 35 && !isVibrating) {
                 vibrate()
+                //set isVibrating to true
+                isVibrating = true
+            }
+            else if (isVibrating && azimuthDifference < 35) {
+                //if the azimuth difference is less than 35 degrees, stop the vibration
+                vibrator.cancel()
+                //set isVibrating to false
+                isVibrating = false
+                //log that the vibration has stopped
+                Log.d("Vibration", "Vibration stopped")
             }
         }
     }
@@ -352,36 +362,33 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         }
     }
     private fun vibrate() {
-        //call the vibratePhone function
+        //vibrate the phone indefinitely
         //log that the vibrate function was called
-        Log.d("vibrate", "called the vibrate function")
+        //Log.d("vibrate", "called the vibrate function")
         //vibrate the phone with version for API 26 and above
+
+
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && vibrator != null) {
-            vibrator!!.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE))
+            vibrator!!.vibrate(VibrationEffect.createOneShot(100000, VibrationEffect.DEFAULT_AMPLITUDE))
             //log that the phone was vibrated
             Log.d("vibrate", "vibrated the phone")
         }
         else {
             //vibrate the phone with version for API 25 and below
-            vibrator!!.vibrate(100)
+            vibrator!!.vibrate(100000)
             //log that the phone was vibrated
             Log.d("vibrate", "vibrated the phone")
         }
 
 
     }
+
     //function which gets the difference between the current azimuth value and the calibrated azimuth value
     //keep in mind that the azimuth is on a 360 degree scale -- thus, the difference can be greater than 180 degrees
     private fun getAzimuthDifference(): Float {
-        //calculate the raw difference
-        var difference = azimuthCalibration - currentAzimuth
-        //if the difference is greater than 180, subtract 360 to get the difference between the two values
-        if (difference > 180) {
-            difference -= 360
-            //Log.d("Difference", "Difference is greater than 180")
-        }
-        //return the absolute value of the difference
-        return abs(difference)
+        //calculate the difference beteweent the current azimuth and the calibrated azimuth
+        var phi = abs(azimuthCalibration - currentAzimuth) % 360
+        return if (phi > 180) 360 - phi else phi
     }
 
 
