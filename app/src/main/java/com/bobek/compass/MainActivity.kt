@@ -18,6 +18,7 @@
 
 package com.bobek.compass
 
+import android.content.Context
 import android.content.pm.ActivityInfo.SCREEN_ORIENTATION_LOCKED
 import android.content.pm.ActivityInfo.SCREEN_ORIENTATION_UNSPECIFIED
 import android.hardware.Sensor
@@ -27,6 +28,9 @@ import android.hardware.SensorManager
 import android.hardware.SensorManager.*
 import android.os.Build
 import android.os.Bundle
+import android.os.VibrationEffect
+import android.os.Vibrator
+import android.os.VibratorManager
 import android.text.method.LinkMovementMethod
 import android.util.Log
 import android.view.*
@@ -44,6 +48,7 @@ import com.bobek.compass.model.SensorAccuracy
 import com.bobek.compass.util.MathUtils
 import com.bobek.compass.view.ObservableSensorAccuracy
 import com.google.android.material.dialog.MaterialAlertDialogBuilder
+import kotlin.math.abs
 
 const val OPTION_INSTRUMENTED_TEST = "INSTRUMENTED_TEST"
 
@@ -58,6 +63,15 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     private var optionsMenu: Menu? = null
 
+    //get the vibration service
+    private lateinit var vibratorManager : VibratorManager
+    private lateinit var vibrator: Vibrator
+
+    //private float which stores the calibrated azimuth value
+    private var azimuthCalibration : Float = 0f
+    //private float storing the current azimuth value
+    private var currentAzimuth : Float = 0f
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -65,6 +79,21 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
         setSupportActionBar(binding.toolbar)
 
         sensorManager = getSystemService(SENSOR_SERVICE) as SensorManager
+
+        //vibration service
+        //if the API level is at or above 31, get the vibrator manager service and the vibrator as the default vibrator
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+            vibratorManager = getSystemService(VIBRATOR_MANAGER_SERVICE) as VibratorManager
+            vibrator = vibratorManager.defaultVibrator
+            //log that the API level is at or above 31
+            Log.d("API", "API level is at or above 31")
+        }
+        //else, use the vibrator service
+        else {
+            vibrator = getSystemService(VIBRATOR_SERVICE) as Vibrator
+            //log that the API level is below 31
+            Log.d("API", "API level is below 31")
+        }
     }
 
     override fun onResume() {
@@ -136,6 +165,10 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             }
             R.id.action_about -> {
                 showAboutPopup()
+                //calibrate the azimuth
+                azimuthCalibration = currentAzimuth
+                //log the calibrated azimuth
+                Log.i("Azimuth", "Calibrated azimuth: $azimuthCalibration")
                 true
             }
             else -> super.onOptionsItemSelected(item)
@@ -242,8 +275,22 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
     private fun updateCompass(event: SensorEvent) {
         val rotationVector = RotationVector(event.values[0], event.values[1], event.values[2])
         val displayRotation = getDisplayRotation()
+        //Log.d("Rotation", "Display rotation is $displayRotation")
         val azimuth = MathUtils.calculateAzimuth(rotationVector, displayRotation)
+
         setAzimuth(azimuth)
+
+        currentAzimuth = azimuth.degrees
+        //Log.d("Rotation", "Azimuth is $currentAzimuth")
+        //if calibrated azimuth is not null, calculate the difference between the two
+        if (azimuthCalibration != null) {
+            val azimuthDifference = getAzimuthDifference()
+            Log.d("Difference", "Azimuth difference is $azimuthDifference")
+            //if azimuth difference is greater than 35 degrees, vibrate the phone
+            if (azimuthDifference > 35) {
+                vibrate()
+            }
+        }
     }
 
     private fun getDisplayRotation(): DisplayRotation {
@@ -265,7 +312,7 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
 
     internal fun setAzimuth(azimuth: Azimuth) {
         binding.contentMain.compass.setAzimuth(azimuth)
-        Log.v(TAG, "Azimuth $azimuth")
+        //Log.v(TAG, "Azimuth $azimuth")
     }
 
     private fun updateSensorStatusIcon() {
@@ -304,4 +351,38 @@ class MainActivity : AppCompatActivity(), SensorEventListener {
             else -> R.drawable.ic_night_mode_auto
         }
     }
+    private fun vibrate() {
+        //call the vibratePhone function
+        //log that the vibrate function was called
+        Log.d("vibrate", "called the vibrate function")
+        //vibrate the phone with version for API 26 and above
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O && vibrator != null) {
+            vibrator!!.vibrate(VibrationEffect.createOneShot(100, VibrationEffect.DEFAULT_AMPLITUDE))
+            //log that the phone was vibrated
+            Log.d("vibrate", "vibrated the phone")
+        }
+        else {
+            //vibrate the phone with version for API 25 and below
+            vibrator!!.vibrate(100)
+            //log that the phone was vibrated
+            Log.d("vibrate", "vibrated the phone")
+        }
+
+
+    }
+    //function which gets the difference between the current azimuth value and the calibrated azimuth value
+    //keep in mind that the azimuth is on a 360 degree scale -- thus, the difference can be greater than 180 degrees
+    private fun getAzimuthDifference(): Float {
+        //calculate the raw difference
+        var difference = azimuthCalibration - currentAzimuth
+        //if the difference is greater than 180, subtract 360 to get the difference between the two values
+        if (difference > 180) {
+            difference -= 360
+            //Log.d("Difference", "Difference is greater than 180")
+        }
+        //return the absolute value of the difference
+        return abs(difference)
+    }
+
+
 }
